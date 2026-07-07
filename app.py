@@ -341,7 +341,7 @@ HTML_CONTENT = r"""<!DOCTYPE html>
   /* summary cards */
   .summary-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 12px;
   }
 
@@ -368,6 +368,7 @@ HTML_CONTENT = r"""<!DOCTYPE html>
 
   .summary-card.warn .value { color: var(--warn); }
   .summary-card.ok .value { color: var(--ok); }
+  .summary-card.ended .value { color: var(--gray-600); }
 
   .summary-card .label {
     font-size: 12px;
@@ -449,6 +450,7 @@ HTML_CONTENT = r"""<!DOCTYPE html>
   .badge.due-soon { background: var(--blue-100); color: var(--blue-700); }
   .badge.status-ok { background: var(--ok-bg); color: var(--ok); }
   .badge.status-warn { background: var(--warn-bg); color: var(--warn); }
+  .badge.status-ended { background: var(--gray-200); color: var(--gray-600); }
 
   .btn-observe {
     border: 1.5px solid var(--blue-500);
@@ -687,7 +689,7 @@ HTML_CONTENT = r"""<!DOCTYPE html>
   }
 
   @media (max-width: 600px) {
-    .summary-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .summary-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .summary-card { padding: 12px 10px; }
     .summary-card .value { font-size: 20px; }
     .item-card { flex-wrap: wrap; }
@@ -749,6 +751,7 @@ HTML_CONTENT = r"""<!DOCTYPE html>
       <a href="#section-dashboard">대시보드</a>
       <a href="#section-attention">확인 필요</a>
       <a href="#section-all">전체 시험</a>
+      <a href="#section-archive">종료된 시험</a>
     </nav>
     <div class="nav-icons">
       <button class="icon-btn" id="btn-search-toggle" aria-label="검색" title="검색">
@@ -812,6 +815,10 @@ HTML_CONTENT = r"""<!DOCTYPE html>
         <div class="value" id="stat-warn">0</div>
         <div class="label">이상 징후</div>
       </div>
+      <div class="summary-card ended">
+        <div class="value" id="stat-ended">0</div>
+        <div class="label">종료됨</div>
+      </div>
     </div>
   </section>
 
@@ -823,6 +830,11 @@ HTML_CONTENT = r"""<!DOCTYPE html>
   <section id="section-all">
     <h2>🧪 전체 시험 목록</h2>
     <div class="card-list" id="all-list"></div>
+  </section>
+
+  <section id="section-archive">
+    <h2>📦 종료된 시험</h2>
+    <div class="card-list" id="archive-list"></div>
   </section>
 </main>
 
@@ -929,6 +941,8 @@ HTML_CONTENT = r"""<!DOCTYPE html>
 
     <div class="modal-actions">
       <button class="btn-secondary" id="btn-detail-close">닫기</button>
+      <button class="btn-primary" id="btn-detail-end">시험 종료</button>
+      <button class="btn-secondary" id="btn-detail-resume" style="display:none;">다시 진행하기</button>
     </div>
   </div>
 </div>
@@ -943,6 +957,7 @@ HTML_CONTENT = r"""<!DOCTYPE html>
       <li><strong>관찰 결과 입력</strong> — "확인 필요" 목록에서 색상·냄새·점도·pH·상분리 여부를 주기적으로 기록하세요.</li>
       <li><strong>이상 징후 자동 감지</strong> — 색상 변화, 점도 20% 이상 변화, pH 0.5 이상 변화, 상분리가 감지되면 자동으로 "이상 징후"로 표시됩니다.</li>
       <li><strong>검색 · 필터</strong> — 🔍로 샘플명을 검색하고, 📅/🚩 아이콘으로 오늘 확인할 항목 또는 이상 징후만 모아볼 수 있습니다.</li>
+      <li><strong>시험 종료</strong> — 상세보기에서 "시험 종료" 버튼을 누르면 "종료된 시험" 보관함으로 이동합니다. 대시보드·확인 필요·전체 시험 목록에서는 빠지며, 필요하면 "다시 진행하기"로 되돌릴 수 있습니다.</li>
     </ol>
     <div class="modal-actions">
       <button class="btn-primary" id="btn-guide-close">확인했어요</button>
@@ -1153,21 +1168,26 @@ HTML_CONTENT = r"""<!DOCTYPE html>
   }
 
   function render() {
-    const total = tests.length;
-    const warnCount = tests.filter(t => testStatus(t) === 'warn').length;
+    const activeTests = tests.filter(t => !t.ended);
+    const archivedTests = tests.filter(t => t.ended);
+
+    const total = activeTests.length;
+    const warnCount = activeTests.filter(t => testStatus(t) === 'warn').length;
     document.getElementById('stat-total').textContent = total;
     document.getElementById('stat-ok').textContent = total - warnCount;
     document.getElementById('stat-warn').textContent = warnCount;
+    document.getElementById('stat-ended').textContent = archivedTests.length;
 
     const term = searchTerm.trim().toLowerCase();
+    const matchesSearch = (t) => !term || t.name.toLowerCase().includes(term);
     const matchesFilters = (t) =>
-      (!term || t.name.toLowerCase().includes(term)) &&
+      matchesSearch(t) &&
       (!flagOnly || testStatus(t) === 'warn') &&
       (!todayOnly || daysBetween(t.nextDue, Date.now()) <= 0);
 
-    // 이번 주 확인 필요 = 관찰 예정일이 7일 이내이거나 최근 관찰에서 이상 징후가 발견된 시험
+    // 이번 주 확인 필요 = 관찰 예정일이 7일 이내이거나 최근 관찰에서 이상 징후가 발견된 진행 중 시험
     const attentionList = document.getElementById('attention-list');
-    const attentionAll = tests.filter(t => daysBetween(t.nextDue, Date.now()) <= 7 || testStatus(t) === 'warn');
+    const attentionAll = activeTests.filter(t => daysBetween(t.nextDue, Date.now()) <= 7 || testStatus(t) === 'warn');
     const attention = attentionAll.filter(matchesFilters).sort((a, b) => a.nextDue - b.nextDue);
 
     const promoText = document.getElementById('promo-text');
@@ -1211,7 +1231,7 @@ HTML_CONTENT = r"""<!DOCTYPE html>
 
     const allList = document.getElementById('all-list');
     allList.innerHTML = '';
-    const filteredAll = tests.filter(matchesFilters);
+    const filteredAll = activeTests.filter(matchesFilters);
     if (filteredAll.length === 0) {
       allList.innerHTML = '<div class="empty-state">조건에 맞는 시험이 없습니다.</div>';
     } else {
@@ -1228,6 +1248,30 @@ HTML_CONTENT = r"""<!DOCTYPE html>
         `;
         el.addEventListener('click', () => openDetailModal(t.id));
         allList.appendChild(el);
+      });
+    }
+
+    // 종료된 시험 = 종료 처리되어 별도 보관함으로 이동한 시험
+    const archiveList = document.getElementById('archive-list');
+    archiveList.innerHTML = '';
+    const filteredArchive = archivedTests.filter(matchesSearch).sort((a, b) => (b.endedDate || 0) - (a.endedDate || 0));
+    if (filteredArchive.length === 0) {
+      archiveList.innerHTML = archivedTests.length === 0
+        ? '<div class="empty-state">종료된 시험이 없습니다.</div>'
+        : '<div class="empty-state">조건에 맞는 시험이 없습니다.</div>';
+    } else {
+      filteredArchive.forEach(t => {
+        const el = document.createElement('div');
+        el.className = 'item-card';
+        el.innerHTML = `
+          <div class="item-main">
+            <div class="item-name">${t.name}</div>
+            <div class="item-meta">${t.condition} · 종료일: ${formatDate(t.endedDate || Date.now())}</div>
+          </div>
+          <span class="badge status-ended">종료됨</span>
+        `;
+        el.addEventListener('click', () => openDetailModal(t.id));
+        archiveList.appendChild(el);
       });
     }
   }
@@ -1255,6 +1299,8 @@ HTML_CONTENT = r"""<!DOCTYPE html>
       cycleDays,
       nextDue: Date.now(),
       observations: [],
+      ended: false,
+      endedDate: null,
     });
     saveTests(tests);
     render();
@@ -1323,6 +1369,27 @@ HTML_CONTENT = r"""<!DOCTYPE html>
   const modalDetail = document.getElementById('modal-detail');
   document.getElementById('btn-detail-close').addEventListener('click', () => modalDetail.classList.remove('open'));
 
+  document.getElementById('btn-detail-end').addEventListener('click', () => {
+    const t = tests.find(x => x.id === activeDetailTestId);
+    if (!t) return;
+    if (!confirm(`"${t.name}" 시험을 종료 처리할까요?\n종료된 시험은 "종료된 시험" 보관함으로 이동합니다.`)) return;
+    t.ended = true;
+    t.endedDate = Date.now();
+    saveTests(tests);
+    render();
+    modalDetail.classList.remove('open');
+  });
+
+  document.getElementById('btn-detail-resume').addEventListener('click', () => {
+    const t = tests.find(x => x.id === activeDetailTestId);
+    if (!t) return;
+    t.ended = false;
+    t.endedDate = null;
+    saveTests(tests);
+    render();
+    modalDetail.classList.remove('open');
+  });
+
   function buildLineChart(observations, key, colorHex) {
     const points = observations.filter(o => o[key] != null && !isNaN(o[key]));
     if (points.length === 0) {
@@ -1364,7 +1431,12 @@ HTML_CONTENT = r"""<!DOCTYPE html>
     activeDetailTestId = testId;
     const t = tests.find(x => x.id === testId);
     document.getElementById('detail-title').textContent = t.name;
-    document.getElementById('detail-sub').textContent = `${t.condition} · ${t.cycleDays}일 주기 · 다음 관찰: ${formatDate(t.nextDue)}`;
+    document.getElementById('detail-sub').textContent = t.ended
+      ? `${t.condition} · ${t.cycleDays}일 주기 · 종료일: ${formatDate(t.endedDate || Date.now())}`
+      : `${t.condition} · ${t.cycleDays}일 주기 · 다음 관찰: ${formatDate(t.nextDue)}`;
+
+    document.getElementById('btn-detail-end').style.display = t.ended ? 'none' : '';
+    document.getElementById('btn-detail-resume').style.display = t.ended ? '' : 'none';
 
     const last = lastObservation(t);
     const summaryBox = document.getElementById('detail-ai-summary');
@@ -1436,16 +1508,19 @@ HTML_CONTENT = r"""<!DOCTYPE html>
   }
 
   function exportTestsToCsv() {
-    const header = ['샘플명', '시험조건', '관찰주기(일)', '관찰일자', '색상', '냄새', '점도(cP)', 'pH', '상분리', '이상징후'];
+    const header = ['샘플명', '시험조건', '관찰주기(일)', '관찰일자', '색상', '냄새', '점도(cP)', 'pH', '상분리', '이상징후', '진행상태', '종료일'];
     const rows = [header];
     tests.forEach(t => {
+      const stateCol = t.ended ? '종료' : '진행중';
+      const endedCol = t.ended ? formatDate(t.endedDate || Date.now()) : '';
       if (t.observations.length === 0) {
-        rows.push([t.name, t.condition, t.cycleDays, '', '', '', '', '', '', '관찰 대기']);
+        rows.push([t.name, t.condition, t.cycleDays, '', '', '', '', '', '', '관찰 대기', stateCol, endedCol]);
       } else {
         t.observations.forEach(o => {
           rows.push([
             t.name, t.condition, t.cycleDays, formatDate(o.date), o.color, o.smell || '',
             o.viscosity, o.pH, o.separation === 'yes' ? '있음' : '없음', o.flagged ? '이상 징후' : '정상',
+            stateCol, endedCol,
           ]);
         });
       }
