@@ -505,9 +505,10 @@ HTML_CONTENT = r"""<!DOCTYPE html>
     inset: 0;
     background: rgba(31, 78, 121, 0.35);
     display: none;
-    align-items: flex-end;
+    align-items: center;
     justify-content: center;
     z-index: 100;
+    padding: 20px;
   }
   .modal-overlay.open { display: flex; }
 
@@ -515,15 +516,10 @@ HTML_CONTENT = r"""<!DOCTYPE html>
     background: var(--white);
     width: 100%;
     max-width: 520px;
-    border-radius: 24px 24px 0 0;
+    border-radius: 24px;
     padding: 22px 20px calc(22px + env(safe-area-inset-bottom));
     max-height: 90vh;
     overflow-y: auto;
-  }
-
-  @media (min-width: 640px) {
-    .modal-overlay { align-items: center; }
-    .modal { border-radius: 24px; }
   }
 
   .modal h3 {
@@ -1511,4 +1507,7 @@ HTML_CONTENT = r"""<!DOCTYPE html>
 
 """
 
-components.html(HTML_CONTENT, height=1400, scrolling=True)
+# iframe 높이를 일반적인 브라우저 뷰포트에 맞춰 900px로 제한하고, 넘치는 내용은
+# iframe 내부 스크롤로 처리합니다. (fixed 위치 팝업이 iframe 뷰포트 기준으로
+# 계산되므로, iframe이 화면보다 너무 크면 팝업이 화면 밖/아래로 밀려 보입니다.)
+components.html(HTML_CONTENT, height=900, scrolling=True)
