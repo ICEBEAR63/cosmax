@@ -505,10 +505,11 @@ HTML_CONTENT = r"""<!DOCTYPE html>
     inset: 0;
     background: rgba(31, 78, 121, 0.35);
     display: none;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     z-index: 100;
-    padding: 20px;
+    padding: 40px 20px;
+    overflow-y: auto;
   }
   .modal-overlay.open { display: flex; }
 
@@ -518,8 +519,7 @@ HTML_CONTENT = r"""<!DOCTYPE html>
     max-width: 520px;
     border-radius: 24px;
     padding: 22px 20px calc(22px + env(safe-area-inset-bottom));
-    max-height: 90vh;
-    overflow-y: auto;
+    margin-bottom: 40px;
   }
 
   .modal h3 {
@@ -1467,6 +1467,20 @@ HTML_CONTENT = r"""<!DOCTYPE html>
     exportTestsToCsv();
   });
 
+  // ---------- 섹션 이동 (대시보드 / 확인 필요 / 전체 시험 / 바로 확인) ----------
+  // href="#id" 기본 동작 대신 scrollIntoView로 직접 이동시켜, 임베드 환경에서도
+  // 항상 해당 섹션으로 확실하게 스크롤되도록 한다.
+  document.querySelectorAll('a[href^="#"]').forEach((link) => {
+    link.addEventListener('click', (e) => {
+      const targetId = link.getAttribute('href').slice(1);
+      const target = document.getElementById(targetId);
+      if (target) {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+
   // ---------- 검색 / 이상 징후 필터 ----------
   const navSearch = document.getElementById('nav-search');
   const searchInput = document.getElementById('search-input');
@@ -1508,6 +1522,6 @@ HTML_CONTENT = r"""<!DOCTYPE html>
 """
 
 # iframe 높이를 일반적인 브라우저 뷰포트에 맞춰 900px로 제한하고, 넘치는 내용은
-# iframe 내부 스크롤로 처리합니다. (fixed 위치 팝업이 iframe 뷰포트 기준으로
-# 계산되므로, iframe이 화면보다 너무 크면 팝업이 화면 밖/아래로 밀려 보입니다.)
+# iframe 내부 스크롤로 처리합니다. 팝업(모달)도 자체 오버레이 스크롤을 사용하므로
+# 내용이 길어도 화면 안에서 스크롤해 닫기 버튼까지 도달할 수 있습니다.
 components.html(HTML_CONTENT, height=900, scrolling=True)
